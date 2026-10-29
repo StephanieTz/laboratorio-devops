@@ -1,0 +1,72 @@
+name: Laboratorio CI-CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v6
+
+      - name: Verificar sitio web
+        run: |
+          test -f site/index.html
+          grep -q "Laboratorio DevOps" site/index.html
+
+      - name: Construir imagen Docker
+        run: docker build -t demo-web:1.0 .
+
+      - name: Ejecutar contenedor
+        run: docker run -d --name demo-web -p 8080:80 demo-web:1.0
+
+      - name: Probar respuesta HTTP
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl --fail --silent http://localhost:8080/ | grep -q "Laboratorio DevOps"; then
+              echo "Prueba exitosa"
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+
+      - name: Limpiar contenedor
+        if: always()
+        run: docker rm -f demo-web || true
+
+  publicar:
+    needs: validar
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v6
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+
+      - name: Preparar sitio
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./site
+
+      - name: Publicar sitio
+        id: deployment
+        uses: actions/deploy-pages@v4
